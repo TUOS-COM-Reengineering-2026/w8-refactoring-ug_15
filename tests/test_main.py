@@ -2,7 +2,7 @@ import unittest
 import io
 import contextlib
 
-from main import CustomerManager, calculate_shipping_fee_for_fragile_items
+from main import CustomerManager, calculate_shipping_fee_for_fragile_items, calculate_shipping_fee_for_heavy_items
 
 class TestCustomerManager(unittest.TestCase):
 
@@ -28,6 +28,18 @@ class TestCustomerManager(unittest.TestCase):
             cm.customers
         )
 
+    def test_add_purchases(self):
+        cm = CustomerManager()
+        name = "Charles"
+        purchase1 = {'price': 100, 'item': 'apple'}
+        purchase2 = {'price': 300, 'item': 'grape'}
+        cm.add_purchases(name, [purchase1, purchase2])
+
+        self.assertEqual(
+            {name: [purchase1, purchase2]},
+            cm.customers
+        )
+
     def test_add_purchase_multiple(self):
         cm = CustomerManager()
         name = "Alice"
@@ -40,42 +52,47 @@ class TestCustomerManager(unittest.TestCase):
             cm.customers
         )
 
-    def test_discount_eligibility(self):
-        cm = CustomerManager()
-        cm.add_customer("Bob", [{'price': 600}])
+    def test_discount_eligibility_various_prices(self):
+        test_cases = [
+            ("Bob", [{'price': 600}], "Eligible for discount"),
+            ("Bill", [{'price': 301}], "Potential future discount customer"),
+            ("Alice", [{'price': 100}], "No discount"),
+            ("Charlie", [{'price': 1300}], "VIP Customer!"),
+            ("Charlie-taxed", [{'price': 1001}], "Eligible for discount"),
+            ("Cameron", [{'price': 810}], "Priority Customer"),
+        ]
 
-        # Capture printed output
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
-            cm.generate_report()
+        for name, purchases, expected_text in test_cases:
+            cm = CustomerManager()
+            cm.add_customer(name, purchases)
 
-        output = captured.getvalue()
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                cm.generate_report()
 
-        self.assertIn("Bob", output)
-        self.assertIn("Eligible for discount", output)
+            output = captured.getvalue()
 
-    def test_heavy_item_shipping_fee(self):
-        cm = CustomerManager()
-        purchases = [{'price': 100, 'weight': 25}]
+            self.assertIn(name, output)
+            self.assertIn(expected_text, output)
 
-        fee = cm.calculate_shipping_fee(purchases)
-        self.assertEqual(fee, 50)
+    def test_calculate_shipping_fee(self):
+        test_cases = [
+            (5, False, 20, 25),
+            (40, False, 50, 25),
+            (5, True, 20, 60),
+        ]
+        for weight, fragile, cost, cost_frag in test_cases:
+            cm = CustomerManager()
+            purchases = [{'price': 40, 'weight': weight, 'fragile': fragile}]
 
-    def test_fragile_item_shipping_fee(self):
-        purchases = [{'price': 70, 'fragile': True}]
+            fee = cm.calculate_shipping_fee(purchases)
+            self.assertEqual(fee, second=cost)
 
-        fee = calculate_shipping_fee_for_fragile_items(purchases)
-        self.assertEqual(fee, 60)
+            fee = calculate_shipping_fee_for_heavy_items(purchases)
+            self.assertEqual(fee, second=cost)
 
-    def test_no_special_items_shipping_fee(self):
-        cm = CustomerManager()
-        purchases = [{'price': 40, 'weight': 5, 'fragile': False}]
-
-        fee = cm.calculate_shipping_fee(purchases)
-        self.assertEqual(fee, 20)
-
-        fee_fragile = calculate_shipping_fee_for_fragile_items(purchases)
-        self.assertEqual(fee_fragile, 25)
+            fee_fragile = calculate_shipping_fee_for_fragile_items(purchases)
+            self.assertEqual(fee_fragile, cost_frag)
 
 if __name__ == "__main__":
     unittest.main()
